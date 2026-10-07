@@ -389,7 +389,111 @@ typedef enum {
 
 ---
 
-## 7. Plan de Tests et de Validation
+## 7. Direction Artistique & IHM : Rendu Vectoriel Navigraph Charts (Jeppesen Moving Map)
+
+Afin d'offrir une immersion et une ergonomie conformes aux outils professionnels de l'aviation de ligne et du contrôle de surface moderne (**Navigraph Charts / Jeppesen Airport Moving Map - AMM**), le visualiseur et le client de simulation abandonnent le style filaire monochrome basique au profit d'un **moteur de rendu vectoriel haute fidélité multi-calques**.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 NAVIGRAPH CHARTS / JEPPESEN AMM STYLING                                 │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ • Fond topographique doux (#C8D6E0) & Emprise plateforme aéroportuaire en ivoire satiné (#F3F6F9)      │
+│ • Pistes d'atterrissage bitume charbon foncé (#2E343A) avec marquages OACI haute précision (pianos)    │
+│ • Réseau de voies de circulation (Taxiways) gris ardoise clair (#DBE0E6) avec lignes jaunes (#E8A817)   │
+│ • Signalétique réglementaire : Badges de taxiway jaunes à lettrage noir (W43, W44, W1, W35, LN...)     │
+│ • Points chauds de sécurité sol : Badges magenta vifs (HS1, HS2, HS3)                                   │
+│ • Complexes aérogares Orly 1, 2, 3 et Orly 4 en bleu marine ardoise (#38415C) & Jetways articulées     │
+│ • Postes de stationnement calibrés (A01-A12, B01-B08, E01-E08...) et rose d'essais Engine Run-Up Area   │
+│ • Cadre applicatif sombre moderne : barre d'itinéraire haute, tiroir de fiches 10-9 et HUD IFR/VFR      │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 7.1 Palette Colorimétrique Officielle & Matériaux Graphiques
+
+Le tableau suivant formalise les codes couleurs stricts (HEX et RGBA) utilisés par les shaders et routines de tracé :
+
+| Élément Visuel | Teinte / Nom | Code HEX | Usage & Règle de Rendu |
+| :--- | :--- | :--- | :--- |
+| **Fond Environnement** | Soft Slate Water/Ground | `#C2D4DE` | Toile de fond extérieure à la plateforme d'Orly |
+| **Emprise Aéroportuaire** | Airport Boundary Poly | `#F3F6F9` | Polygone délimitant le domaine aéroportuaire LFPO |
+| **Pistes (Runways)** | Dark Asphalt Charcoal | `#2E343A` | Revêtement des pistes 06/24, 07/25 et 02/20 |
+| **Accotements de Piste** | Runway Shoulders | `#3A414A` | Élargissements stabilisés et bandes anti-souffle |
+| **Marquages Pistes** | Aviation White | `#FFFFFF` | Pianos de seuils, chevrons, axe pointillé, numéros |
+| **Taxiways & Tarmac** | Light Apron Concrete | `#DBE0E6` | Revêtement des voies de circulation et parkings |
+| **Bordures Taxiways** | Pavement Edge Outline | `#B8C0C8` | Liseré de délimitation du bitume de taxiway |
+| **Lignes Axiales Guidage** | Intense Taxiway Yellow | `#E8A817` | Lignes de guidage continu, raccords courbes de virage |
+| **Points d'Arrêt (Hold)** | Holding Bar Yellow | `#F1B82D` | Doubles barres continues + pointillées d'arrêt piste |
+| **Bâtiments Terminaux** | Jeppesen Dark Slate Navy | `#38415C` | Polygones des aérogares Orly 1/2/3 et Orly 4 |
+| **Ombres Portées Bâti** | Ambient Building Shadow | `rgba(0,0,0,0.18)` | Découpe d'ombre douce sous les toitures des aérogares |
+| **Badges Taxiways** | Signboard Yellow & Black | `#F3C11B` / `#151515` | Rectangles jaunes à bordure noire et texte gras (`W43`) |
+| **Hotspots Sécurité** | Safety Hotspot Magenta | `#C2185B` / `#FFFFFF` | Badges arrondis magenta d'alerte point chaud (`HS1`) |
+| **Postes Avion (Stands)** | Stand Box Grey | `#85909B` / `#FFFFFF` | Boîtes de stationnement et étiquettes de porte (`E03`) |
+| **Cadre IHM / Barres** | Navigraph Dark Onyx | `#131722` / `#1C2230` | Barre de route supérieure, barre latérale, tiroir bas |
+| **Boutons & Accents IHM** | Cockpit Cyan & Blue | `#0E76A8` / `#00A3E0` | Boutons de sélection active, onglet de fiche de percée |
+
+---
+
+### 7.2 Architecture des Calques de Rendu (Layer Hierarchy)
+
+Le moteur de rendu (qu'il soit exécuté par le client C / Raylib ou le client Web / Canvas) suit un pipeline d'affichage séquentiel strict sans chevauchement parasite :
+
+```mermaid
+graph TD
+    L0["Layer 0 : Environnement & Trame Géographique (#C2D4DE)"] --> L1["Layer 1 : Polygone d'Emprise de la Plateforme LFPO (#F3F6F9)"]
+    L1 --> L2["Layer 2 : Dalles des Aires de Trafic (Aprons A, D, E, G, K)"]
+    L2 --> L3["Layer 3 : Pistes 06/24, 07/25, 02/20 & Marquages OACI (Pianos/Seuils)"]
+    L3 --> L4["Layer 4 : Voies de Circulation & Lignes Axiales Jaunes (#E8A817)"]
+    L4 --> L5["Layer 5 : Bâtiments Terminaux Orly 1, 2, 3, 4 (#38415C) & Hangars"]
+    L5 --> L6["Layer 6 : Postes de Stationnement (Stands), Lignes de Butée & Jetways"]
+    L6 --> L7["Layer 7 : Signalétique Sol OACI (Badges W43, W44...) & Hotspots Magenta (HS)"]
+    L7 --> L8["Layer 8 : Aéronefs Vectoriels & Engins Sol GSE en Mouvement"]
+    L8 --> L9["Layer 9 : IHM Navigraph Charts (Barre de Vol, Strips, Onglets Cartes)"]
+```
+
+---
+
+### 7.3 Géométrie Réelle de la Plateforme de Paris-Orly (LFPO)
+
+Le visualiseur charge une description vectorielle fidèle de Paris-Orly indexée dans un repère métrique orthonormé centré sur le point de référence aéroportuaire (ARP) :
+
+1. **Pistes Modélisées** :
+   - **Piste 06/24** : Longueur 3 650 m, largeur 45 m. Axe principal Sud-Ouest vers Nord-Est (~059° / 239°). Seuil décalé 24 avec chevrons d'approche.
+   - **Piste 07/25** : Longueur 3 320 m, largeur 45 m. Axe Sud-Ouest vers Nord-Est (~067° / 247°).
+   - **Piste 02/20** : Longueur 2 400 m, largeur 45 m. Axe Nord-Sud sécant (~016° / 196°).
+2. **Réseau de Voies de Circulation (Taxiways & Raquettes)** :
+   - Voies principales : `W1`, `W2`, `W3`, `W31`, `W33`, `W35`, `W43`, `W44`, `W47`, `LN`, `WQ`.
+   - Courbes de raccordement par splines cubiques de Bézier pour garantir la continuité des rayons de virage des aéronefs gros porteurs ($R_{\min} \ge 42\text{ m}$).
+   - Points chauds de sécurité (*Hotspots*) : `HS1` (croisement taxiway / piste 02), `HS2`, `HS3`.
+3. **Terminaux & Aires de Trafic** :
+   - **Orly 1, 2, 3** : Cœur aéroportuaire connecté, avec jetways monocouloirs 1L et postes `A01-A12`, `B01-B08`.
+   - **Orly 4** : Terminal international gros porteurs, avec double jetway télescopique 1L+2L et postes `E01-E08`.
+   - **Aires de Trafic** : `Apron A`, `Apron D`, `Apron E`, `Apron G`, `Apron K`.
+   - **Engine Run-Up Area** : Aire d'essai point fixe au Nord-Est avec graduation circulaire.
+
+---
+
+### 7.4 Interface Utilisateur (HUD) Inspirée de Navigraph Charts
+
+L'interface enveloppant la carte vectorielle reprend la disposition exacte de l'application de navigation professionnelle :
+
+1. **Bandeau Supérieur d'Itinéraire (Top Flight Plan Bar)** :
+   - Affichage chronologique du plan de vol sous forme de badges stylisés : aérodrome de départ (`LFPO`), piste en service (`RW14R` ou `RW24`), procédure de départ (`FIST7H`), points tournants de navigation (`FISTO`, `DCT 41`, `PERIG`, `DCT 89`, `ADABI`, `DOKAG`, `UN858 27`, `DEVRO`...).
+2. **Barre d'Outils Latérale Gauche (Quick Navigation Dock)** :
+   - Icônes vectorielles compactes : Recherche (`Search`), Gestion des vols (`Flights`), Fiches aéroport (`Airports`), Panneau d'épingles (`Pinboards`), Points personnalisés (`User WPTs`), Paramètres (`Settings`).
+3. **Boutons Flottants de Cartographie (Floating Control Pills)** :
+   - Sélecteurs rapides : `Route`, `Weather` (couche météo dynamique), `Telemetry` (jauges vitesse/altitude/cap), `Pinboard`, `HIGH IFR / LOW IFR`, mode Nuit/Jour, calques A-SMGCS.
+4. **Tiroir Inférieur de Sélection des Cartes (Bottom Chart Tray)** :
+   - Onglets de fiches d'aérodrome avec badges OACI :
+     - `LFPO 10-9 AIRPORT, AIRPORT INFO` (carte de surface active)
+     - `10-3F FISTO & LACOU 7H DEPS` (SID Orly)
+     - `EBBR 10-2B ARVOL & TULNI 8A` (dégagement)
+     - `11-1 ILS OR LOC RWY 01` (approche de précision)
+5. **Panneau d'Inspection Opérationnelle & Servitude Escale (Turnaround Dock)** :
+   - Au clic sur un aéronef ou une porte de stationnement, ouverture d'un panneau latéral en verre dépoli (*glassmorphism*) permettant de superviser et commander en temps réel l'ensemble de la chaîne de rotation : cales, GPU, PCA, jetways 1L/2L, ravitaillement fuel, camions catering 1R/2R, chargeurs ULD et tracteur pushback.
+
+---
+
+## 8. Plan de Tests et de Validation
 
 ### Tests Automatisés (`tests/test_main.c`)
 1. **Validation des Contraintes d'Affectation des Postes** :
@@ -408,5 +512,7 @@ typedef enum {
 
 ### Validation Interactive
 - Lancement du serveur `./airport_server --port 8080`.
-- Lancement du client radar `./airport_client --connect 127.0.0.1:8080`.
+- Lancement du client radar / visualiseur Navigraph `./airport_client --connect 127.0.0.1:8080`.
+- Lancement du visualiseur Web interactif haute fidélité (`web/index.html`).
 - Réalisation d'une session complète intégrant simultanément un court-courrier au large, un moyen-courrier à Orly 1 et un long-courrier à Orly 4, avec contrôle des flux passagers, du dispatching matériel et des clairances ATC.
+
